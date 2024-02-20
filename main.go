@@ -12,6 +12,12 @@ import (
 
 const timeMarkerFName = "timemarker"
 const timeMarkerFPath = "./" + timeMarkerFName
+const (
+	currentTagIdx = iota
+	lastTagIdx
+	timeMarkerIdx
+	numberOfRecords
+)
 
 var helpMessage = "tag is missed"
 var pathError = &fs.PathError{}
@@ -23,10 +29,13 @@ func main() {
 		}
 	}()
 
-	tag, comment := getParams()
+	newTag, comment := getParams()
 
 	now := time.Now()
 	log, err := getLogFile(now)
+	if err != nil {
+		panic(err)
+	}
 	defer log.Close()
 
 	mBytes, err := os.ReadFile(timeMarkerFPath)
@@ -34,13 +43,13 @@ func main() {
 		panic(err)
 	}
 
-	var lastTag string
+	var curTag, lastTag string
 	var marker int
 	if err == nil {
-		lastTag, marker = getMarkers(mBytes)
+		curTag, lastTag, marker = getMarkers(mBytes)
 	}
 
-	if tag == lastTag {
+	if newTag == curTag {
 		panic("New tag has to be different from the last one.")
 	}
 
@@ -51,11 +60,12 @@ func main() {
 	defer mFile.Close()
 
 	hours, mins := getTimeDifference(marker, now)
-	if _, err = log.WriteString(fmt.Sprintf("%s,%s,%d,%d,%s\n", now.Format(time.RFC3339), tag, hours, mins, comment)); err != nil {
+	if _, err = log.WriteString(fmt.Sprintf("%s,%s,%d,%d,%s\n", now.Format(time.RFC3339), lastTag, hours, mins, comment)); err != nil {
 		panic(err)
 	}
 
-	if _, err = mFile.WriteString(fmt.Sprintf("%s\n%d\n", tag, now.Unix())); err != nil {
+	curTag, lastTag = newTag, curTag
+	if _, err = mFile.WriteString(fmt.Sprintf("%s\n%s\n%d", newTag, curTag, now.Unix())); err != nil {
 		panic(err)
 	}
 
@@ -73,29 +83,35 @@ func getTimeDifference(marker int, now time.Time) (int, int) { //bench it
 	return hours, mins
 }
 
-func getMarkers(mBytes []byte) (string, int) {
-	strs := strings.SplitN(string(mBytes), "\n", 3)
-	if len(strs) < 2 {
+func getMarkers(mBytes []byte) (string, string, int) {
+	strs := strings.SplitN(string(mBytes), "\n", numberOfRecords)
+	if len(strs) < 3 {
 		panic("less than 2 lines in the '" + timeMarkerFName + "' file")
 	}
-	lastOperation := strs[0]
-	marker, err := strconv.Atoi(strs[1])
+	currentOperation := strs[currentTagIdx]
+	lastOperation := strs[lastTagIdx]
+	marker, err := strconv.Atoi(strs[timeMarkerIdx])
 	if err != nil {
 		panic(err)
 	}
 
-	return lastOperation, marker
+	return currentOperation, lastOperation, marker
 }
 
 // the caller of the function IS RESPONSIBLE for closing the returned file
 func getLogFile(now time.Time) (*os.File, error) {
+	err := os.MkdirAll("./logs", 0755)
+	if err != nil {
+		return nil, err
+	}
+
 	fname := fmt.Sprintf("%d-%d-%d.csv", now.Year(), now.Month(), now.Day())
 	log, err := os.OpenFile("./logs/"+fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return log, err
+	return log, nil
 }
 
 func getParams() (string, string) {
