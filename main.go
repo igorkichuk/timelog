@@ -65,7 +65,7 @@ func main() {
 	}
 
 	curTag, lastTag = newTag, curTag
-	if _, err = mFile.WriteString(fmt.Sprintf("%s\n%s\n%d", newTag, curTag, now.Unix())); err != nil {
+	if _, err = mFile.WriteString(fmt.Sprintf("%s\n%s\n%d", curTag, lastTag, now.Unix())); err != nil {
 		panic(err)
 	}
 
